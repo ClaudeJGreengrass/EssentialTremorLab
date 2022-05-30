@@ -1,0 +1,16 @@
+﻿The Essential Tremor Lab is a workshop for the Citizen Scientist interested in the measurement, diagnosis, and possible treatment of Essential Tremors.
+
+
+At present we have a working proof-of-concept tremor device that will:
+
+
+* Measure the postural tremor in your hand/forearm
+* Apply electrical stimulation to the Radial and Medial nerves in the forearm alternating the stimulation at the frequency of your tremor
+* With stimulus provided by a battery powered commercial TENS unit for the supply of the electrical stimulus
+* Will be simple to replicate without the need for any special skills or tools
+
+
+All the hardware is COTS (Commercial Off The Shelf) that is reasonably priced. We have experienced some delays in ordering components due to world wide silicon chip shortages. A complete list of all required components is available.
+
+
+All software is Open Source, licensed under GPL2
