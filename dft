@@ -1,0 +1,161 @@
+#!/usr/bin/perl
+
+use warnings;
+
+#// from https://www.instructables.com/Arduino-Frequency-Transform-DFT/
+#// some errors corrected SJR 10/2021
+#/*
+#  8 TERMS THAT NEED TO BE SPECIFIED
+#  1: an array of which dft need to be taken
+#  2:size of the array
+#  3:time interval between 2 reading in array in milliSECONDS
+#  4:lower value of frequency range in Hz
+#  5:upper value of frequency range in Hz
+#  6:size of steps for frequency range
+#  7:repetitions of signal array (minimum 1) higher number better accuracy but increased solution time
+#  8:  0 for no window, 1 for flat-top window, 2 for Hann window, 3 for Hamming window
+#      (if you do not have any idea about selecting window keep default 3)
+#  example:
+#      dft(a,110,0.5,0,30,0.5,10,3);
+#      here a is an array of size 110 element to be checked for 0 Hz to 30 Hz with 0.5 step (0,0.5,1,1.5, ... ,29,29.5,30)
+#      10 repetition and hamming window
+#      by- ABHILASH PATEL
+#*/
+
+#float dft(float a[], int arraysize, float interval, float f0, float fn, float stepsize, int reps, int window)
+sub dft
+{
+	my ($a, $arraysize, $interval, $f0, $fn, $stepsize, $reps, $window) = @_;
+#	$mag, $sumi, $sumr, $ti, $tr;
+#	$j, $k;
+#print "data array repetitions = ", $reps, "\n";
+#print "f0==", $f0, "\n";
+#exit;
+
+  #// apply windowing function
+  if ($window == 1) #//flat-top window
+  {
+#    for (int i = 0; i < arraysize; i++)
+	$i = 0;
+	while( $i < $arraysize)
+    {
+		$b = 3.14159 * $i / ($arraysize);
+		$a->[$i] = $a->[$i] * ( 1 - (1.93 * cos(2 * $b)) + (1.29 * cos(4 * $b)) - (0.388 * cos(6 * $b)) + (0.028 * cos(8 * $b)));
+# print $i, "\n";
+		$i++;
+    }
+  }
+
+	if ($window == 2) # hann window
+	{
+	#for (int i = 0; i < arraysize; i++)
+	$i = 0;
+	while( $i < $arraysize )
+		{
+			$b = 6.28318 * $i / ($arraysize);
+			$a->[$i] = $a->[$i] * 0.5 * (1 - cos($b));
+#print $a->[$i], "\n";
+			$i++;
+		}
+	}
+
+	if ($window == 3) # hamming window
+	{
+		#for (int i = 0; i < arraysize; i++)
+		$i = 0;
+		while( $i < $arraysize )
+		{
+			$b = 6.28318 * $i / ($arraysize);
+			$a->[$i] = $a->[$i] * (0.54 - 0.46 * cos($b));
+#print $a->[$i], "\n";
+			$i++;
+		}
+	}
+
+#  DFT calculation
+
+	# for (float f = f0; f <= fn; f = f + stepsize)
+	$f = $f0;
+	while( $f <= $fn )
+	{
+		$sumi = $sumr = 0.0;
+		$k = 0;
+		#for (int i = 0; i < (arraysize * reps); i++)
+		$i = 0;
+		while( $i < ($arraysize * $reps) )
+		{
+			$j = $i -$k;
+#print "j==", $j, " i==", $i, " k==", $k, "\n";
+			if ($j >= $arraysize) 
+			{
+				$k = $k + $arraysize;  # signal repeat index offset
+				$j = $i - $k;
+			}
+#print "j==", $j, " a[j]==", $a->[$j], "\n";
+			$ti = $a->[$j] * (sin(6.2318 * $f * $i * $interval * 0.001)); #//0.001 => time in seconds
+			$tr = $a->[$j] * (cos(6.2318 * $f * $i * $interval * 0.001));
+			$sumi = $sumi + $ti;
+			$sumr = $sumr + $tr;
+			$i++;
+		}
+#print "arrays ==", $arraysize, "\n";
+#print "reps ==", $reps, "\n";
+		$mag = sqrt($sumi * $sumi + $sumr * $sumr) / ($arraysize * $reps);
+		$tmp = sqrt($sumi * $sumi + $sumr * $sumr);
+		$mag = $tmp / ($arraysize * $reps);
+#		print $f, "\t", $mag, "\n";
+		printf "%2.2f,%1.4f\n", $f, $mag;
+		$f = $f + $stepsize;
+	}
+}
+
+#@mydata = (0, 0, 0, 0, 10, 10, 10, 10); # example square wave signal, period = 8 x sample time
+@mydata;
+
+#read in data from the csv file
+
+$mdIndex = 0;
+$recRead = 0;
+open(DATA, "tremor_data.csv") || die "can't open csv file: $!\n";
+while(<DATA>)
+{
+    next if /^micros/; # skip the header line
+    next if /^rec/;
+	$recRead++;
+   ($recNo, $AccX, $AccY, $AccZ, $GyroX, $GyroY, $GyroZ) = split(/,/, $_);
+    next if $recRead < 501;
+#print "rec==", $recNo, "\n";
+#	$mydata[$mdIndex] = $AccY;
+	$mydata[$mdIndex] = $GyroY;
+	$mdIndex++;
+    last if $recRead > 8499;
+}
+#print "records == $mdIndex\n";
+#exit;
+close(DATA);
+$i = 0;
+while( $i < 10 )
+{
+#	print "mydata[", $i, "]==", $mydata[$i], "\n";
+	$i++;
+}
+
+#  //sample time = 10 ms, signal frequency in this case = 1/period = 12.5 Hz.
+#  //DFT calculated for 0 to 40 Hz in steps of 0.5 Hz, assuming signal repeats 4 times, no window
+#  // expect peaks at 0Hz (DC offset), 12.5 Hz, 37.5 Hz, ...
+#  1: an array of which dft need to be taken
+#  2:size of the array
+#  3:time interval between 2 reading in array in milliSECONDS
+#  4:lower value of frequency range in Hz
+#  5:upper value of frequency range in Hz
+#  6:size of steps for frequency range
+#  7:repetitions of signal array (minimum 1) higher number better accuracy but increased solution time
+#  8:  0 for no window, 1 for flat-top window, 2 for Hann window, 3 for Hamming window
+#      (if you do not have any idea about selecting window keep default 3)
+#  example:
+#      dft(a,110,0.5,0,30,0.5,10,3);
+#      here a is an array of size 110 element to be checked for 0 Hz to 30 Hz with 0.5 step (0,0.5,1,1.5, ... ,29,29.5,30)
+#      10 repetition and hamming window
+
+dft (\@mydata, 8000, 4, 3, 12, 0.02, 30, 1);
+
