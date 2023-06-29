@@ -195,6 +195,43 @@ Copyright (C) 2023  J.L. Kissel
 #define MEDIUM_LOW_LEVEL 12   // the medium speed range is between H_M_L and M_L_L
                               // the slow speed range is < M_L_L
 
+const unsigned long Button_Timeout = 125;  // 125 miliseconds
+hid_mouse_report_t filtered_report;
+
+#define Xindex 0
+#define Yindex 1
+#define NUMBEROFMEASUREMENTS 2
+#define MOVINGAVERAGEWINDOWSIZE 4
+float CurrentMovingAverage[NUMBEROFMEASUREMENTS]; // the current moving average
+float Remainder[NUMBEROFMEASUREMENTS] = {0,0}; // the current moving average
+int MovingAverageWindow[NUMBEROFMEASUREMENTS][MOVINGAVERAGEWINDOWSIZE]; // array for storing mouse movement values to be averaged
+int newData[2]; // we only smoth the X and Y data
+int indexMAW = 0;   // index into MAW[] 
+
+void UpdateMovingAverages() {
+  float CalcMA;
+  int i,j;
+  newData[Xindex] = filtered_report.x;
+  newData[Yindex] = filtered_report.y;
+  
+  for(j = 0; j < NUMBEROFMEASUREMENTS; j++) {
+//    PreviousMovingAverage[j] = CurrentMovingAverage[j];
+    MovingAverageWindow[j] [indexMAW] = newData[j];
+    CalcMA = 0;
+    for( i = 0; i < NUMBEROFMEASUREMENTS; i++) {
+      CalcMA += MovingAverageWindow[j][i];
+    }
+    CurrentMovingAverage[j] = (int)( (CalcMA/MOVINGAVERAGEWINDOWSIZE) + Remainder[j] );
+    Remainder[j] = ( CalcMA/MOVINGAVERAGEWINDOWSIZE ) - CurrentMovingAverage[j];
+  }
+  indexMAW++;
+  if( indexMAW == MOVINGAVERAGEWINDOWSIZE ) // we need to wrap around our circular buffer
+  {
+    indexMAW = 0;
+  }
+}
+
+
 /*
  * Cursor Speed attenuation
  */
@@ -221,19 +258,13 @@ void speed_filter(int8_t xy[])
       remainder[i] = tmp - int(tmp);  // save it for next mouse movement
       xy[i] = (int8_t)tmp;
     }
-  }
-  
+  }  
 }
 
 /*
  * Adjust HID report by applying log_filterF
  */
 void filter_report(hid_mouse_report_t const* report) {
-
-/*--------------------------------------------------------------------+
-This section of code filters the mouse movement based on the speed of the
-mouse.  It should be the default filter after all other conditions
-----------------------------------------------------------------------*/
   int8_t old_xy[2];
 
   old_xy[0] = report->x;
@@ -244,6 +275,49 @@ mouse.  It should be the default filter after all other conditions
   filtered_report.x = old_xy[0];
   filtered_report.y = old_xy[1];
   //Serial.printf("%d,%d,%d,%d\n", old_x, filtered_report.x, old_y, filtered_report.y);
+
+  UpdateMovingAverages();
+/*--------------------------------------------------------------------+
+This section decides if the Middle mouse button has been pressed and if
+it has switched to X-Y mode.  Only horizontial or only verital movement
+----------------------------------------------------------------------*/
+  unsigned long currentMillis;  
+  static unsigned long PreviousMillis = 0;
+  static uint8_t previousButton = 0;
+  static bool Middle_Button_Pressed = false;
+
+  if( filtered_report.buttons & MOUSE_BUTTON_MIDDLE) {
+    // the middle button has been pressed
+    if( previousButton & MOUSE_BUTTON_MIDDLE ) { // we are waiting for the time this button has been pressed to exceed 
+      currentMillis = millis();
+      if( currentMillis - PreviousMillis >= Button_Timeout) { // we have a valid Middle button press
+//        filtered_report.buttons = report->buttons; // send the mouse button
+        if( Middle_Button_Pressed ) {  // the middle Button is a toggle into and out of X-Y mode
+          Middle_Button_Pressed = false;
+        }
+        else {
+          Middle_Button_Pressed = true;
+        }
+      }
+      else {
+        filtered_report.buttons = 0;
+      }
+    } else {
+      PreviousMillis = millis(); // the start time
+    }
+  }
+
+  /* If Middle_Button_Pressed, the we are in X-Y mode.  Adjust the x,y accordingly */
+  if( Middle_Button_Pressed ) {
+ //   if( filtered_report.x > filtered_report.y ) { // only allow X or Y movement
+    if( CurrentMovingAverage[Xindex] > CurrentMovingAverage[Yindex] ) {
+      filtered_report.y = 0;
+    } else {
+      filtered_report.x = 0;
+    }
+  }
+
+
   usb_hid.sendReport(0, &filtered_report, sizeof(filtered_report));
   
 }
